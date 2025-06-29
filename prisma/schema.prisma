@@ -1,0 +1,858 @@
+// Schéma Prisma pour le système de candidatures marocain
+// En savoir plus : https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // ou "mysql", "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// GESTION DES UTILISATEURS
+// ================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  prenom    String
+  nom       String
+  telephone String?
+  role      RoleUtilisateur @default(CANDIDAT)
+  statut    StatutUtilisateur @default(ACTIF)
+  avatar    String?
+  
+  // Horodatage
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  derniereConnexion DateTime?
+  
+  // Vérification email
+  emailVerifie Boolean @default(false)
+  tokenVerificationEmail String?
+  
+  // Réinitialisation mot de passe
+  tokenResetMotDePasse String?
+  expirationResetMotDePasse DateTime?
+  
+  // Relations
+  profilCandidat ProfilCandidat?
+  profilCoordinateur ProfilCoordinateur?
+  profilExaminateur ProfilExaminateur?
+  profilAdministrateur ProfilAdministrateur?
+  
+  // Activités
+  candidaturesCrees Candidature[]
+  notificationsEnvoyees Notification[]
+  entretienAssignes Entretien[] @relation("ExaminateurAssigne")
+  notesEntretien NoteEntretien[]
+  verificationsDocument VerificationDocument[]
+  journalActivites JournalActivite[]
+  
+  @@map("utilisateurs")
+}
+
+enum RoleUtilisateur {
+  CANDIDAT
+  COORDINATEUR
+  EXAMINATEUR
+  ADMINISTRATEUR
+}
+
+enum StatutUtilisateur {
+  ACTIF
+  EN_ATTENTE
+  SUSPENDU
+  INACTIF
+}
+
+// ================================
+// PROFILS UTILISATEURS
+// ================================
+
+model ProfilCandidat {
+  id     String @id @default(cuid())
+  utilisateurId String @unique
+  utilisateur   User   @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  // Informations personnelles
+  dateNaissance DateTime?
+  genre      Genre?
+  nationalite String?
+  
+  // Adresse
+  adresse    String?
+  ville      String?
+  province   String?
+  pays       String @default("Maroc")
+  
+  // Contact d'urgence
+  nomContactUrgence     String?
+  telephoneContactUrgence String?
+  emailContactUrgence   String?
+  
+  // Préférences
+  communicationPreferee MethodeCommunication @default(EMAIL)
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("profils_candidats")
+}
+
+model ProfilCoordinateur {
+  id     String @id @default(cuid())
+  utilisateurId String @unique
+  utilisateur   User   @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  departement    String
+  bureauLocalisation String?
+  telephoneBureau   String?
+  specialisation String[]
+  
+  // Programmes assignés
+  programmesAssignes Programme[]
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("profils_coordinateurs")
+}
+
+model ProfilExaminateur {
+  id     String @id @default(cuid())
+  utilisateurId String @unique
+  utilisateur   User   @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  titre         String // Dr., Prof., etc.
+  departement    String
+  specialisation String[]
+  bureauLocalisation String?
+  telephoneBureau   String?
+  
+  // Préférences d'entretien
+  maxEntretiensParJour Int @default(4)
+  creneauxPreferes    String[] // Tableau JSON des créneaux
+  joursDisponibles    String[] // Tableau JSON des jours
+  
+  // Statistiques
+  totalEntretiens     Int @default(0)
+  noteMoyenne        Float?
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("profils_examinateurs")
+}
+
+model ProfilAdministrateur {
+  id     String @id @default(cuid())
+  utilisateurId String @unique
+  utilisateur   User   @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  departement     String
+  niveauAcces    NiveauAccesAdmin @default(STANDARD)
+  permissions    String[] // Tableau JSON des permissions spécifiques
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("profils_administrateurs")
+}
+
+enum Genre {
+  MASCULIN
+  FEMININ
+  AUTRE
+  PREFERE_NE_PAS_DIRE
+}
+
+enum MethodeCommunication {
+  EMAIL
+  SMS
+  TELEPHONE
+  COURRIER
+}
+
+enum NiveauAccesAdmin {
+  STANDARD
+  SENIOR
+  SUPER_ADMIN
+}
+
+// ================================
+// PROGRAMMES ACADÉMIQUES
+// ================================
+
+model Programme {
+  id          String @id @default(cuid())
+  nom        String
+  code        String @unique
+  description String?
+  departement  String
+  diplome      TypeDiplome
+  duree    Int // en mois
+  
+  // Exigences
+  moyenneMinimale        Float?
+  documentsRequis String[] // Tableau JSON
+  fraisCandidature    Float?
+  
+  // Dates limites
+  dateLimiteCandidature DateTime?
+  dateDebut          DateTime?
+  
+  // Statut
+  estActif    Boolean @default(true)
+  capacite    Int?
+  inscriptionsActuelles Int @default(0)
+  
+  // Relations
+  candidatures Candidature[]
+  coordinateurs ProfilCoordinateur[]
+  periodesCandidature PeriodeCandidature[]
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("programmes")
+}
+
+enum TypeDiplome {
+  MASTER
+  LICENCE_FAC
+  LICENCE_EST
+  DEUG
+  DEUST
+  BTS
+  DUT
+  LICENCE_US
+  DIPLOME_INGENIEUR
+  AUTRE
+}
+
+model PeriodeCandidature {
+  id        String @id @default(cuid())
+  nom      String // "Automne 2024", "Printemps 2025"
+  annee      Int
+  semestre  Semestre
+  description String?
+  
+  // Dates
+  dateDebut        DateTime
+  dateFin          DateTime
+  
+  // Relations
+  candidatures Candidature[]
+  programmes    Programme[]
+  entretiens   Entretien[] @relation("EntretienPeriode")
+  
+  dateLimiteCandidature DateTime
+  dateDecision     DateTime?
+  
+  // Statut
+  statut    StatutPeriode @default(A_VENIR)
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@unique([annee, semestre])
+  @@map("periodes_candidature")
+}
+
+enum Semestre {
+  AUTOMNE
+  PRINTEMPS
+  ETE
+}
+
+enum StatutPeriode {
+  A_VENIR
+  ACTIVE
+  FERMEE
+  TERMINEE
+}
+
+// ================================
+// CANDIDATURES
+// ================================
+
+model Candidature {
+  id                String @id @default(cuid())
+  numeroCandidature String @unique // AUTO-GÉNÉRÉ: CAND-2024-001 
+  // Informations de base
+  candidatId String
+  candidat   User   @relation(fields: [candidatId], references: [id])
+  
+  // Période
+  periodeCandidature PeriodeCandidature @relation(fields: [periodeCandidatureId], references: [id])
+  periodeCandidatureId String
+  programmeId   String
+  programme     Programme @relation(fields: [programmeId], references: [id])
+  
+  // Détails de la candidature
+  // typeEtude        TypeEtude @default(TEMPS_PLEIN)
+  // dateDebutPrevue DateTime?
+  
+  // Statut et progression
+  statut           StatutCandidature @default(BROUILLON)
+  progression         Int @default(0) // 0-100
+  // priorite         Priorite @default(MOYENNE)
+  
+  // Dates importantes
+  soumiseA      DateTime?
+  revueCommenceeA  DateTime?
+  decisionPriseA   DateTime?
+  dateLimite         DateTime
+  
+  // Décision
+  decision         DecisionCandidature?
+  raisonDecision   String?
+  decisionPrisePar   String? // ID utilisateur
+  
+  // Financier
+  fraisCandidature   Float?
+  statutFrais       StatutFrais @default(EN_ATTENTE)
+  fraisPayesA       DateTime?
+  
+  // Relations
+  // informationsPersonnelles     InformationsPersonnelles?
+  dossierAcademique  DossierAcademique[]
+  documents        Document[]
+  references       Reference[]
+  entretiens       Entretien[]
+  chronologie         ChronologieCandidature[]
+  notes           NoteCandidature[]
+  statement String? @db.Text 
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("candidatures")
+}
+
+enum TypeEtude {
+  TEMPS_PLEIN
+  TEMPS_PARTIEL
+}
+
+enum StatutCandidature {
+  BROUILLON
+  SOUMISE
+  EN_COURS_EXAMEN
+  DOCUMENTS_EN_ATTENTE
+  ENTRETIEN_PROGRAMME
+  ENTRETIEN_TERMINE
+  DECISION_EN_ATTENTE
+  ACCEPTEE
+  REFUSEE
+  LISTE_ATTENTE
+  RETIREE
+}
+
+enum Priorite {
+  FAIBLE
+  MOYENNE
+  ELEVEE
+  URGENTE
+}
+
+enum DecisionCandidature {
+  ACCEPTEE
+  REFUSEE
+  LISTE_ATTENTE
+  ACCEPTATION_CONDITIONNELLE
+}
+
+enum StatutFrais {
+  EN_ATTENTE
+  PAYE
+  EXONERE
+  REMBOURSE
+}
+
+
+model DossierAcademique {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  
+  // Détails de l'établissement
+  nomEtablissement String
+  typeEtablissement TypeEtablissement
+
+  
+  // Informations sur le diplôme
+  typeDiplome      TypeDiplome
+  domaineEtude    String
+
+  mention           String?  // Très Bien, Bien, Assez Bien, Passable
+  
+  // Dates
+  dateDebut       DateTime
+  dateFin         DateTime?
+  dateObtentionDiplome  DateTime?
+  
+  // Performance académique
+  moyenne             Float?
+  echelleMoyenne      Float? // 20.0, 4.0, etc.
+  semesters           Json?
+  
+  // Statut
+  estTermine     Boolean @default(false)
+ 
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("dossiers_academiques")
+}
+
+enum TypeEtablissement {
+  LYCEE
+  UNIVERSITE
+  ECOLE_SUPERIEURE
+  INSTITUT_SPECIALISE
+  ECOLE_PRIVEE
+  AUTRE
+}
+
+
+
+model Document {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  
+  // Détails du document
+  type          TypeDocument
+  titre         String
+  description   String?
+  nomFichier      String  // Cloudinary public_id
+  nomOriginal  String
+  tailleFichier      Int
+  typeMime      String
+  url           String
+  size          Int? 
+  
+  // Statut
+  statut        StatutDocument @default(EN_ATTENTE_VERIFICATION)
+  estObligatoire    Boolean @default(true)
+  
+  // Vérification
+  verifications VerificationDocument[]
+  
+  // Métadonnées
+  telechargeA    DateTime @default(now())
+  modifieA     DateTime @updatedAt
+  
+  @@map("documents")
+}
+
+enum TypeDocument {
+  DEMANDE_CV
+  PHOTOS_IDENTITE
+  DIPLOMES
+  RELEVES_NOTES
+  CIN
+  CONTRAT_FORMATION
+  LETTRE_MOTIVATION
+  LETTRE_RECOMMANDATION
+  PORTFOLIO
+  SCORES_TESTS
+  DOCUMENTS_FINANCIERS
+  AUTRE
+}
+
+enum StatutDocument {
+  EN_ATTENTE_VERIFICATION
+  VERIFIE
+  REFUSE
+  SIGNALE
+  EXPIRE
+}
+
+model VerificationDocument {
+  id         String @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  verificateurId String
+  verificateur   User @relation(fields: [verificateurId], references: [id])
+  
+  statut     StatutDocument
+  notes      String?
+  verifieA DateTime @default(now())
+  
+  @@map("verifications_documents")
+}
+
+model Reference {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  
+  // Détails de la référence
+  nom          String
+  titre         String?
+  organisation  String
+  email         String
+  telephone         String?
+  relation  String
+  
+  // Statut
+  statut        StatutReference @default(EN_ATTENTE)
+  demandeEnvoyeeA DateTime?
+  soumiseA   DateTime?
+  
+  // Contenu de la référence
+  recommandation String?
+  note        Int? // Échelle 1-5
+  
+  // Communication
+  rappelsEnvoyes Int @default(0)
+  dernierRappelA DateTime?
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("references")
+}
+
+enum StatutReference {
+  EN_ATTENTE
+  ENVOYEE
+  SOUMISE
+  REFUSEE
+  EXPIREE
+}
+
+// ================================
+// ENTRETIENS
+// ================================
+
+model Entretien {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  periodeId      String
+  periode      PeriodeCandidature @relation("EntretienPeriode", fields: [periodeId], references: [id])
+  
+  // Détails de l'entretien
+  type          TypeEntretien
+  format        FormatEntretien
+  titre         String?
+  description   String?
+  
+  // Planification
+  dateProgrammee DateTime
+  heureProgrammee String // "10:00"
+  duree      Int // en minutes
+  fuseauHoraire      String @default("Africa/Casablanca")
+  
+  // Lieu/Informations de réunion
+  lieu      String?
+  lienReunion   String?
+  idReunion     String?
+  motDePasseReunion String?
+  
+  // Participants
+  examinateurId String?
+  examinateur   User? @relation("ExaminateurAssigne", fields: [examinateurId], references: [id])
+  
+  // Statut
+  statut        StatutEntretien @default(PROGRAMME)
+  
+  // Résultats
+  notes         NoteEntretien[]
+  resultat       ResultatEntretien?
+  recommandation String?
+  
+  // Communication
+  rappelsEnvoyes Int @default(0)
+  dernierRappelA DateTime?
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("entretiens")
+}
+
+enum TypeEntretien {
+  ENTRETIEN_INITIAL
+  ENTRETIEN_TECHNIQUE
+  ENTRETIEN_PANEL
+  ENTRETIEN_FINAL
+  DISCUSSION_INFORMELLE
+}
+
+enum FormatEntretien {
+  PRESENTIEL
+  VIRTUEL
+  TELEPHONIQUE
+  HYBRIDE
+}
+
+enum StatutEntretien {
+  PROGRAMME
+  CONFIRME
+  EN_COURS
+  TERMINE
+  ANNULE
+  ABSENT
+  REPROGRAMME
+}
+
+enum ResultatEntretien {
+  RECOMMANDE
+  CONDITIONNEL
+  NON_RECOMMANDE
+  NECESSITE_SUIVI
+}
+
+model NoteEntretien {
+  id          String @id @default(cuid())
+  entretienId String
+  entretien   Entretien @relation(fields: [entretienId], references: [id], onDelete: Cascade)
+  auteurId    String
+  auteur      User @relation(fields: [auteurId], references: [id])
+  
+  // Catégories de notes
+  evaluationTechnique    String?
+  competencesCommunication    String?
+  motivationAdequation      String?
+  recommandationGlobale String?
+  
+  // Notes (échelle 1-5)
+  noteTechnique       Int?
+  noteCommunication   Int?
+  noteMotivation      Int?
+  noteGlobale         Int?
+  
+  // Notes supplémentaires
+  pointsForts             String?
+  pointsFaibles            String?
+  commentairesSupplementaires    String?
+  
+  // Statut
+  estComplete            Boolean @default(false)
+  estBrouillon               Boolean @default(true)
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("notes_entretiens")
+}
+
+// ================================
+// NOTIFICATIONS
+// ================================
+
+model Notification {
+  id        String @id @default(cuid())
+  titre     String
+  contenu   String
+  type      TypeNotification @default(REGULIERE)
+  
+  // Ciblage
+  audience  AudienceNotification @default(TOUS)
+ 
+  
+  // Expéditeur
+  expediteurId  String?
+  expediteur    User? @relation(fields: [expediteurId], references: [id])
+  
+  // Statut
+  statut    StatutNotification @default(BROUILLON)
+  
+  // Livraison
+  envoyeeA    DateTime?
+  destinataires DestinataireNotification[]
+  
+  // Planification
+  programmePour DateTime?
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("notifications")
+}
+
+enum TypeNotification {
+  REGULIERE
+  SYSTEME
+  URGENTE
+  RAPPEL
+}
+
+enum AudienceNotification {
+  TOUS
+  CANDIDATS
+  COORDINATEURS
+  EXAMINATEURS
+  ADMINISTRATEURS
+  PROGRAMMES_SPECIFIQUES
+}
+
+enum StatutNotification {
+  BROUILLON
+  PROGRAMMEE
+  ENVOYEE
+  ANNULEE
+}
+
+model DestinataireNotification {
+  id             String @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  utilisateurId         String
+  
+  // Statut de livraison
+  livree      Boolean @default(false)
+  livreeA    DateTime?
+  lue           Boolean @default(false)
+  lueA         DateTime?
+  // Méthode de livraison
+  methode         String[] // email, sms, push
+  
+  creeA DateTime @default(now())
+  
+  @@unique([notificationId, utilisateurId])
+  @@map("destinataires_notifications")
+}
+
+// ================================
+// CHRONOLOGIE ET ACTIVITÉ
+// ================================
+
+model ChronologieCandidature {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  
+  evenement         String
+  description   String?
+  statut        StatutChronologie
+  
+  // Acteur
+  acteurId       String?
+  typeActeur     String? // UTILISATEUR, SYSTEME, EXTERNE
+  
+  // Métadonnées
+  metadonnees      Json?
+  
+  creeA DateTime @default(now())
+  
+  @@map("chronologie_candidatures")
+}
+
+enum StatutChronologie {
+  TERMINE
+  EN_COURS
+  EN_ATTENTE
+  ANNULE
+}
+
+model NoteCandidature {
+  id            String @id @default(cuid())
+  candidatureId String
+  candidature   Candidature @relation(fields: [candidatureId], references: [id], onDelete: Cascade)
+  
+  contenu       String
+  type          TypeNote @default(GENERALE)
+  estInterne    Boolean @default(true)
+  
+  // Auteur
+  auteurId      String
+  nomAuteur    String
+  roleAuteur    String
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("notes_candidatures")
+}
+
+enum TypeNote {
+  GENERALE
+  EXAMEN
+  DECISION
+  COMMUNICATION
+  TECHNIQUE
+}
+
+model JournalActivite {
+  id        String @id @default(cuid())
+  utilisateurId    String?
+  utilisateur      User? @relation(fields: [utilisateurId], references: [id])
+  
+  action    String
+  ressource  String
+  idRessource String?
+  details   Json?
+  
+  // Informations de requête
+  adresseIP String?
+  agentUtilisateur String?
+  
+  creeA DateTime @default(now())
+  
+  @@map("journal_activites")
+}
+
+// ================================
+// CONFIGURATION SYSTÈME
+// ================================
+
+model ParametreSysteme {
+  id    String @id @default(cuid())
+  cle   String @unique
+  valeur String
+  type  TypeParametre @default(CHAINE)
+  
+  description String?
+  categorie    String?
+  estPublic    Boolean @default(false)
+  
+  creeA DateTime @default(now())
+  modifieA DateTime @updatedAt
+  
+  @@map("parametres_systeme")
+}
+
+enum TypeParametre {
+  CHAINE
+  NOMBRE
+  BOOLEEN
+  JSON
+  DATE
+}
+
+// ================================
+// STOCKAGE DE FICHIERS
+// ================================
+
+
+
+model TelechargementFichier {
+  id           String @id @default(cuid())
+  nomFichier     String
+  nomOriginal String
+  tailleFichier     Int
+  typeMime     String
+  cheminFichier     String
+  
+  // Informations de stockage
+  fournisseurStockage String // LOCAL, AWS_S3, CLOUDINARY
+  cleStockage      String?
+  urlPublique       String?
+  
+  // Métadonnées
+  telechargepar   String?
+  objectif      String? // DOCUMENT, AVATAR, PIECE_JOINTE
+  
+  creeA DateTime @default(now())
+  
+  @@map("telechargements_fichiers")
+}
