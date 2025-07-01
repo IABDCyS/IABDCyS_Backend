@@ -223,7 +223,7 @@ model Programme {
 
 enum TypeDiplome {
   MASTER
-  LICENCE_FAC
+  LICENCE_FONDAMENTALE
   LICENCE_EST
   DEUG
   DEUST

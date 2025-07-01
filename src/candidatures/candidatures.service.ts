@@ -1,5 +1,5 @@
 import { UpdateCandidatProfileDto } from './../auth/dto/update-profile.dto';
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCandidatureDto } from './dto/create-candidature.dto';
 import { UpdateCandidatureDto } from './dto/update-candidature.dto';
@@ -388,35 +388,41 @@ export class CandidaturesService {
     // Handle dossierAcademique updates separately
     if (updateCandidatureDto.dossierAcademique && updateCandidatureDto.dossierAcademique.length > 0) {
       for (const dossier of updateCandidatureDto.dossierAcademique) {
-        await this.prisma.dossierAcademique.upsert({
-          where: { id: dossier.id },
-          update: {
-            nomEtablissement: dossier.nomEtablissement,
-            typeEtablissement: dossier.typeEtablissement,
-            typeDiplome: dossier.typeDiplome as TypeDiplome,
-            domaineEtude: dossier.domaineEtude,
-            moyenne: Number(dossier.moyenne),
-            dateDebut: new Date(dossier.dateDebut),
-            dateFin: new Date(dossier.dateFin),
-            echelleMoyenne: Number(dossier.echelleMoyenne),
-            semesters: dossier.semesters,
-          },
-          create: {
-            id: dossier.id, // Include the ID for creation
-            nomEtablissement: dossier.nomEtablissement,
-            typeEtablissement: dossier.typeEtablissement,
-            typeDiplome: dossier.typeDiplome as TypeDiplome,
-            domaineEtude: dossier.domaineEtude,
-            moyenne: Number(dossier.moyenne),
-            dateDebut: new Date(dossier.dateDebut),
-            dateFin: new Date(dossier.dateFin),
-            echelleMoyenne: Number(dossier.echelleMoyenne),
-            candidatureId: id
-            }
-        });
+        if(dossier.id){
+          await this.prisma.dossierAcademique.update({
+            where: { id: dossier.id },
+            data:  {
+              nomEtablissement: dossier.nomEtablissement,
+              typeEtablissement: dossier.typeEtablissement,
+              typeDiplome: dossier.typeDiplome as TypeDiplome,
+              domaineEtude: dossier.domaineEtude,
+              moyenne: Number(dossier.moyenne),
+              dateDebut: new Date(dossier.dateDebut),
+              dateFin: new Date(dossier.dateFin),
+              echelleMoyenne: Number(dossier.echelleMoyenne),
+              semesters: dossier.semesters,
+            },
+          });
+        }else{
+          await this.prisma.dossierAcademique.create({
+            data:  {
+              // id: dossier.id, // Include the ID for creation
+              nomEtablissement: dossier.nomEtablissement,
+              typeEtablissement: dossier.typeEtablissement,
+              typeDiplome: dossier.typeDiplome as TypeDiplome,
+              domaineEtude: dossier.domaineEtude,
+              moyenne: Number(dossier.moyenne),
+              dateDebut: new Date(dossier.dateDebut),
+              dateFin: new Date(dossier.dateFin),
+              echelleMoyenne: Number(dossier.echelleMoyenne),
+              candidatureId: id
+              }
+          });
+        }
       }
     }
-  
+   
+    
     return updatedCandidature;
   }
 
@@ -685,6 +691,61 @@ export class CandidaturesService {
 
     if (candidature.statut !== StatutCandidature.BROUILLON) {
       throw new ForbiddenException('Seules les candidatures en brouillon peuvent être soumises');
+    }
+
+    // Get candidature with documents to validate required documents
+    const candidatureWithDocuments = await this.prisma.candidature.findUnique({
+      where: { id },
+      include: {
+        documents: true,
+        candidat: true,
+        dossierAcademique: true,
+      },
+    });
+
+    if (!candidatureWithDocuments) {
+      throw new NotFoundException(`Candidature avec ID ${id} non trouvée`);
+    }
+
+    // Validate required documents
+    const requiredDocumentTypes = [
+      'DEMANDE_CV',
+      'PHOTOS_IDENTITE', 
+      'DIPLOMES',
+      'RELEVES_NOTES',
+      'CIN',
+      'CONTRAT_FORMATION'
+    ];
+
+    const uploadedDocumentTypes = candidatureWithDocuments.documents.map(doc => doc.type);
+    const missingDocuments = requiredDocumentTypes.filter(type => !uploadedDocumentTypes.includes(type));
+
+    if (missingDocuments.length > 0) {
+      const documentNames = {
+        'DEMANDE_CV': 'CV',
+        'PHOTOS_IDENTITE': 'Photos d\'identité',
+        'DIPLOMES': 'Diplômes',
+        'RELEVES_NOTES': 'Relevés de notes',
+        'CIN': 'Carte d\'identité nationale',
+        'CONTRAT_FORMATION': 'Contrat de formation'
+      };
+      
+      const missingNames = missingDocuments.map(type => documentNames[type as keyof typeof documentNames]);
+      throw new BadRequestException(`Documents requis manquants: ${missingNames.join(', ')}`);
+    }
+
+    // Validate other required fields
+    if (!candidatureWithDocuments.candidat?.prenom || !candidatureWithDocuments.candidat?.nom || 
+        !candidatureWithDocuments.candidat?.email || !candidatureWithDocuments.candidat?.telephone) {
+      throw new BadRequestException('Informations personnelles incomplètes');
+    }
+
+    if (!candidatureWithDocuments.dossierAcademique || candidatureWithDocuments.dossierAcademique.length === 0) {
+      throw new BadRequestException('Dossier académique requis');
+    }
+
+    if (!candidatureWithDocuments.statement || candidatureWithDocuments.statement.trim().length < 10) {
+      throw new BadRequestException('Lettre de motivation requise (minimum 10 caractères)');
     }
 
     return this.prisma.candidature.update({
