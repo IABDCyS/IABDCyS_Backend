@@ -1,11 +1,17 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
-      log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
+      log:
+        process.env.NODE_ENV === "development"
+          ? ["query", "info", "warn", "error"]
+          : ["error"],
     });
   }
 
@@ -18,12 +24,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async cleanDatabase() {
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
-      const models = Reflect.ownKeys(this).filter((key) => key[0] !== '_');
-      
-      return Promise.all(
-        models.map((modelKey) => this[modelKey].deleteMany()),
-      );
+    if (
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV === "test"
+    ) {
+      const models = Reflect.ownKeys(this).filter((key) => key[0] !== "_");
+
+      return Promise.all(models.map((modelKey) => this[modelKey].deleteMany()));
     }
   }
 }

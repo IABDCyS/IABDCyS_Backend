@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { QueryUtilisateursDto } from './dto/query-utilisateurs.dto';
-import { UpdateUtilisateurDto } from './dto/update-utilisateur.dto';
-import { UpdateProfilCandidatDto } from './dto/update-profil-candidat.dto';
-import { UpdateProfilCoordinateurDto } from './dto/update-profil-coordinateur.dto';
-import { RoleUtilisateur } from '@prisma/client';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import { QueryUtilisateursDto } from "./dto/query-utilisateurs.dto";
+import { UpdateUtilisateurDto } from "./dto/update-utilisateur.dto";
+import { UpdateProfilCandidatDto } from "./dto/update-profil-candidat.dto";
+import { UpdateProfilCoordinateurDto } from "./dto/update-profil-coordinateur.dto";
+import { RoleUtilisateur } from "@prisma/client";
 
 @Injectable()
 export class UtilisateursService {
@@ -20,9 +20,13 @@ export class UtilisateursService {
       ...(statut && { statut }),
       ...(recherche && {
         OR: [
-          { prenom: { contains: recherche, mode: Prisma.QueryMode.insensitive } },
+          {
+            prenom: { contains: recherche, mode: Prisma.QueryMode.insensitive },
+          },
           { nom: { contains: recherche, mode: Prisma.QueryMode.insensitive } },
-          { email: { contains: recherche, mode: Prisma.QueryMode.insensitive } },
+          {
+            email: { contains: recherche, mode: Prisma.QueryMode.insensitive },
+          },
         ],
       }),
     };
@@ -109,23 +113,23 @@ export class UtilisateursService {
 
   async update(id: string, updateUtilisateurDto: UpdateUtilisateurDto) {
     await this.findOne(id);
-// CHNAGE WHAT'S NOT EMPTY
-    const data : any = {};
+    // CHNAGE WHAT'S NOT EMPTY
+    const data: any = {};
     if (updateUtilisateurDto.role) data.role = updateUtilisateurDto.role;
     if (updateUtilisateurDto.statut) data.statut = updateUtilisateurDto.statut;
     if (updateUtilisateurDto.email) data.email = updateUtilisateurDto.email;
-    if (updateUtilisateurDto.password) data.password = updateUtilisateurDto.password;
-    if (updateUtilisateurDto.telephone) data.telephone = updateUtilisateurDto.telephone;
+    if (updateUtilisateurDto.password)
+      data.password = updateUtilisateurDto.password;
+    if (updateUtilisateurDto.telephone)
+      data.telephone = updateUtilisateurDto.telephone;
     if (updateUtilisateurDto.prenom) data.prenom = updateUtilisateurDto.prenom;
     if (updateUtilisateurDto.nom) data.nom = updateUtilisateurDto.nom;
-   
-   
+
     return this.prisma.user.update({
       where: { id },
       data: {
         ...updateUtilisateurDto,
         role: updateUtilisateurDto.role as RoleUtilisateur,
-      
       },
     });
   }
@@ -138,14 +142,17 @@ export class UtilisateursService {
     });
   }
 
-  async updateProfil(id: string, updateProfilDto: UpdateProfilCandidatDto | UpdateProfilCoordinateurDto) {
+  async updateProfil(
+    id: string,
+    updateProfilDto: UpdateProfilCandidatDto | UpdateProfilCoordinateurDto
+  ) {
     const user = await this.findOne(id);
 
     if (user.role === RoleUtilisateur.CANDIDAT) {
       return this.prisma.profilCandidat.upsert({
         where: { utilisateurId: id },
         create: {
-          ...updateProfilDto as UpdateProfilCandidatDto,
+          ...(updateProfilDto as UpdateProfilCandidatDto),
           utilisateur: { connect: { id } },
         },
         update: updateProfilDto as UpdateProfilCandidatDto,
@@ -154,21 +161,23 @@ export class UtilisateursService {
       return this.prisma.profilCoordinateur.upsert({
         where: { utilisateurId: id },
         create: {
-          ...updateProfilDto as UpdateProfilCoordinateurDto,
+          ...(updateProfilDto as UpdateProfilCoordinateurDto),
           utilisateur: { connect: { id } },
         },
         update: updateProfilDto as UpdateProfilCoordinateurDto,
       });
     }
 
-    throw new NotFoundException(`Type de profil non pris en charge pour le rôle ${user.role}`);
+    throw new NotFoundException(
+      `Type de profil non pris en charge pour le rôle ${user.role}`
+    );
   }
 
   async findExaminateurs() {
     return this.prisma.user.findMany({
       where: {
         role: RoleUtilisateur.EXAMINATEUR,
-        statut: 'ACTIF',
+        statut: "ACTIF",
       },
       select: {
         id: true,
@@ -184,7 +193,7 @@ export class UtilisateursService {
         modifieA: true,
       },
       orderBy: {
-        nom: 'asc',
+        nom: "asc",
       },
     });
   }
@@ -193,7 +202,7 @@ export class UtilisateursService {
     return this.prisma.user.findMany({
       where: {
         role: RoleUtilisateur.CANDIDAT,
-        statut: 'ACTIF',
+        statut: "ACTIF",
       },
       select: {
         id: true,
@@ -209,7 +218,7 @@ export class UtilisateursService {
         modifieA: true,
       },
       orderBy: {
-        nom: 'asc',
+        nom: "asc",
       },
     });
   }
