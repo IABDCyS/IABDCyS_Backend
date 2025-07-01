@@ -39,7 +39,12 @@ export class CloudinaryService {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder,
-          resource_type: 'auto',
+          resource_type: 'raw',
+          format:'pdf',
+          use_filename:true,
+          unique_filename: false,
+          type:'upload',
+          access_mode:'public'
         },
         (error, result: UploadApiResponse) => {
           if (error) return reject(error);
